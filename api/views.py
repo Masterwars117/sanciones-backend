@@ -3,10 +3,9 @@ import json
 import re
 
 import pandas as pd
-from django.db.models import Q, Value, CharField
+from django.db.models import CharField, Q, Value
 from django.db.models.functions import Coalesce, Concat
 from django.http import JsonResponse
-from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
@@ -85,6 +84,36 @@ def normalize_homoclave(value):
     return re.sub(r"[\s-]", "", str(value).strip().upper())
 
 
+def normalize_dependencia_clave(value):
+    if value is None:
+        return None
+
+    value = str(value).strip()
+    if not value:
+        return None
+
+    if re.fullmatch(r"\d+(\.0+)?", value):
+        value = str(int(float(value)))
+
+    if value.isdigit() and len(value) < 3:
+        return value.zfill(3)
+
+    return value
+
+
+def normalize_federal_rfc_parts(rfc, homoclave):
+    rfc = normalize_rfc(rfc)
+    homoclave = normalize_homoclave(homoclave)
+
+    if re.fullmatch(r"[A-ZÑ&]{3,4}[0-9]{6}[A-Z0-9]{3}", rfc):
+        rfc_homoclave = rfc[-3:]
+        rfc = rfc[:-3]
+        if not homoclave:
+            homoclave = rfc_homoclave
+
+    return rfc, homoclave
+
+
 def validar_rfc_estatal(rfc):
     # Persona moral: 3 letras + 6 dígitos + 3 homoclave = 12
     # Persona física: 4 letras + 6 dígitos + 3 homoclave = 13
@@ -101,6 +130,7 @@ def validar_curp(curp):
 
 
 def validar_rfc_federal_base(rfc):
+    # En tu tabla federal el RFC está separado de la homoclave:
     # 3 o 4 letras + 6 dígitos = 9 o 10 caracteres
     return bool(re.fullmatch(r"[A-ZÑ&]{3,4}[0-9]{6}", rfc))
 
@@ -220,6 +250,8 @@ def paginate_queryset(qs, request):
 
     if total_pages == 0:
         return {
+            "count": 0,
+            "total_count": 0,
             "page": page,
             "page_size": page_size,
             "total_pages": 0,
@@ -230,18 +262,23 @@ def paginate_queryset(qs, request):
 
     if page > total_pages:
         return {
+            "count": total,
+            "total_count": total,
             "page": page,
             "page_size": page_size,
             "total_pages": total_pages,
             "next": False,
             "previous": True,
             "message": "no hay mas datos",
+            "results": [],
         }
 
     offset = (page - 1) * page_size
     results = list(qs.values()[offset:offset + page_size])
 
     return {
+        "count": total,
+        "total_count": total,
         "page": page,
         "page_size": page_size,
         "total_pages": total_pages,
@@ -378,6 +415,9 @@ def crear_estatal(request):
 
         anio = (data.get("anio") or "").strip()
         sancionid = (data.get("sancionid") or "").strip()
+        dependencia = normalize_dependencia_clave(data.get("dependencia"))
+        cve_entidad_labora = normalize_dependencia_clave(data.get("cve_entidad_labora"))
+        entidad_labora = (data.get("entidad_labora") or "").strip() or None
         rfc = normalize_rfc(data.get("rfc"))
         curp = normalize_curp(data.get("curp"))
 
@@ -399,6 +439,10 @@ def crear_estatal(request):
                 status=400
             )
 
+        if cve_entidad_labora:
+            dep_labora = Dependencia.objects.filter(clave=cve_entidad_labora).values("descripcion").first()
+            entidad_labora = dep_labora["descripcion"] if dep_labora else entidad_labora
+
         existe = Inhabilitado.objects.filter(anio=anio, sancionid=sancionid).exists()
         if existe:
             return JsonResponse(
@@ -416,9 +460,9 @@ def crear_estatal(request):
             apaterno=(data.get("apaterno") or "").strip() or None,
             amaterno=(data.get("amaterno") or "").strip() or None,
             nombres=(data.get("nombres") or "").strip() or None,
-            dependencia=(data.get("dependencia") or "").strip() or None,
+            dependencia=dependencia,
             cargo=(data.get("cargo") or "").strip() or None,
-            entidad_labora=(data.get("entidad_labora") or "").strip() or None,
+            entidad_labora=entidad_labora,
             tiposancion=(data.get("tiposancion") or "").strip() or None,
             tiposancion2=(data.get("tiposancion2") or "").strip() or None,
             periodo=(data.get("periodo") or "").strip() or None,
@@ -433,10 +477,10 @@ def crear_estatal(request):
             monto1=(data.get("monto1") or "").strip() or None,
             monto2=(data.get("monto2") or "").strip() or None,
             curp=curp or None,
-            fechareg=timezone.now(),
+            fechareg=parse_date(data.get("fechareg")),
             genero=(data.get("genero") or "").strip() or None,
             idsesea=parse_number(data.get("idsesea")),
-            cve_entidad_labora=(data.get("cve_entidad_labora") or "").strip() or None,
+            cve_entidad_labora=cve_entidad_labora,
             tipofalta=(data.get("tipofalta") or "").strip() or None,
             nivelcateg=(data.get("nivelcateg") or "").strip() or None,
             resolucionurl=(data.get("resolucionurl") or "").strip() or None,
@@ -452,7 +496,7 @@ def crear_estatal(request):
             montoapi2=parse_number(data.get("montoapi2")),
             gravedad=(data.get("gravedad") or "").strip() or None,
         )
-        obj.save()
+        obj.save(force_insert=True)
 
         return JsonResponse({
             "ok": True,
@@ -479,7 +523,7 @@ def crear_federal(request):
 
         if not validar_rfc_federal_base(rfc):
             return JsonResponse(
-                {"error": "RFC federal inválido. Debe capturarse sin homoclave y con base de 9 o 10 caracteres."},
+                {"error": "RFC federal inválido."},
                 status=400
             )
 
@@ -568,7 +612,7 @@ def editar_federal(request):
 
         if not validar_rfc_federal_base(rfc_original):
             return JsonResponse(
-                {"error": "RFC federal inválido. Debe capturarse sin homoclave y con base de 9 o 10 caracteres."},
+                {"error": "RFC federal inválido."},
                 status=400
             )
 
@@ -702,11 +746,19 @@ def editar_estatal(request):
 
         anio_original = (data.get("anio_original") or "").strip()
         sancionid_original = (data.get("sancionid_original") or "").strip()
+        anio = (data.get("anio") or "").strip()
+        sancionid = (data.get("sancionid") or "").strip()
+        dependencia = normalize_dependencia_clave(data.get("dependencia"))
+        cve_entidad_labora = normalize_dependencia_clave(data.get("cve_entidad_labora"))
+        entidad_labora = (data.get("entidad_labora") or "").strip() or None
         rfc = normalize_rfc(data.get("rfc"))
         curp = normalize_curp(data.get("curp"))
 
         if not anio_original or not sancionid_original:
             return JsonResponse({"error": "AÑO original y SANCIONID original son obligatorios."}, status=400)
+
+        if not anio or not sancionid:
+            return JsonResponse({"error": "AÑO y SANCIONID son obligatorios."}, status=400)
 
         if rfc and not validar_rfc_estatal(rfc):
             return JsonResponse(
@@ -720,53 +772,82 @@ def editar_estatal(request):
                 status=400
             )
 
-        try:
-            obj = Inhabilitado.objects.get(anio=anio_original, sancionid=sancionid_original)
-        except Inhabilitado.DoesNotExist:
+        registro_qs = Inhabilitado.objects.filter(
+            anio=anio_original,
+            sancionid=sancionid_original
+        )
+
+        if not registro_qs.exists():
             return JsonResponse({"error": "Registro estatal no encontrado."}, status=404)
 
-        obj.oficio = (data.get("oficio") or "").strip() or None
-        obj.f_oficio = parse_date(data.get("f_oficio"))
-        obj.expediente = (data.get("expediente") or "").strip() or None
-        obj.f_resolucion = parse_date(data.get("f_resolucion"))
-        obj.apaterno = (data.get("apaterno") or "").strip() or None
-        obj.amaterno = (data.get("amaterno") or "").strip() or None
-        obj.nombres = (data.get("nombres") or "").strip() or None
-        obj.dependencia = (data.get("dependencia") or "").strip() or None
-        obj.cargo = (data.get("cargo") or "").strip() or None
-        obj.entidad_labora = (data.get("entidad_labora") or "").strip() or None
-        obj.tiposancion = (data.get("tiposancion") or "").strip() or None
-        obj.tiposancion2 = (data.get("tiposancion2") or "").strip() or None
-        obj.periodo = (data.get("periodo") or "").strip() or None
-        obj.deinhabil = parse_date(data.get("deinhabil"))
-        obj.ainhabil = parse_date(data.get("ainhabil"))
-        obj.motivo = (data.get("motivo") or "").strip() or None
-        obj.statussanc1 = (data.get("statussanc1") or "").strip() or None
-        obj.statussanc2 = (data.get("statussanc2") or "").strip() or None
-        obj.rfc = rfc or None
-        obj.fejec1 = parse_date(data.get("fejec1"))
-        obj.fejec2 = parse_date(data.get("fejec2"))
-        obj.monto1 = (data.get("monto1") or "").strip() or None
-        obj.monto2 = (data.get("monto2") or "").strip() or None
-        obj.curp = curp or None
-        obj.genero = (data.get("genero") or "").strip() or None
-        obj.idsesea = parse_number(data.get("idsesea"))
-        obj.cve_entidad_labora = (data.get("cve_entidad_labora") or "").strip() or None
-        obj.tipofalta = (data.get("tipofalta") or "").strip() or None
-        obj.nivelcateg = (data.get("nivelcateg") or "").strip() or None
-        obj.resolucionurl = (data.get("resolucionurl") or "").strip() or None
-        obj.observaciones = (data.get("observaciones") or "").strip() or None
-        obj.cve_moneda1 = (data.get("cve_moneda1") or "").strip() or None
-        obj.cve_moneda2 = (data.get("cve_moneda2") or "").strip() or None
-        obj.tipo_docto = (data.get("tipo_docto") or "").strip() or None
-        obj.titulo_docto = (data.get("titulo_docto") or "").strip() or None
-        obj.descripcion_docto = (data.get("descripcion_docto") or "").strip() or None
-        obj.fecha_docto = parse_date(data.get("fecha_docto"))
-        obj.particular = (data.get("particular") or "").strip() or None
-        obj.montoapi1 = parse_number(data.get("montoapi1"))
-        obj.montoapi2 = parse_number(data.get("montoapi2"))
-        obj.gravedad = (data.get("gravedad") or "").strip() or None
-        obj.save()
+        duplicado = Inhabilitado.objects.filter(
+            anio=anio,
+            sancionid=sancionid
+        ).exclude(
+            anio=anio_original,
+            sancionid=sancionid_original
+        ).exists()
+
+        if duplicado:
+            return JsonResponse(
+                {"error": "Ya existe un registro con ese AÑO y SANCIONID."},
+                status=400
+            )
+
+        if cve_entidad_labora:
+            dep_labora = Dependencia.objects.filter(clave=cve_entidad_labora).values("descripcion").first()
+            entidad_labora = dep_labora["descripcion"] if dep_labora else entidad_labora
+
+        update_data = {
+            "anio": anio,
+            "sancionid": sancionid,
+            "oficio": (data.get("oficio") or "").strip() or None,
+            "f_oficio": parse_date(data.get("f_oficio")),
+            "expediente": (data.get("expediente") or "").strip() or None,
+            "f_resolucion": parse_date(data.get("f_resolucion")),
+            "apaterno": (data.get("apaterno") or "").strip() or None,
+            "amaterno": (data.get("amaterno") or "").strip() or None,
+            "nombres": (data.get("nombres") or "").strip() or None,
+            "dependencia": dependencia,
+            "cargo": (data.get("cargo") or "").strip() or None,
+            "entidad_labora": entidad_labora,
+            "tiposancion": (data.get("tiposancion") or "").strip() or None,
+            "tiposancion2": (data.get("tiposancion2") or "").strip() or None,
+            "periodo": (data.get("periodo") or "").strip() or None,
+            "deinhabil": parse_date(data.get("deinhabil")),
+            "ainhabil": parse_date(data.get("ainhabil")),
+            "motivo": (data.get("motivo") or "").strip() or None,
+            "statussanc1": (data.get("statussanc1") or "").strip() or None,
+            "statussanc2": (data.get("statussanc2") or "").strip() or None,
+            "rfc": rfc or None,
+            "fejec1": parse_date(data.get("fejec1")),
+            "fejec2": parse_date(data.get("fejec2")),
+            "monto1": (data.get("monto1") or "").strip() or None,
+            "monto2": (data.get("monto2") or "").strip() or None,
+            "curp": curp or None,
+            "genero": (data.get("genero") or "").strip() or None,
+            "idsesea": parse_number(data.get("idsesea")),
+            "cve_entidad_labora": cve_entidad_labora,
+            "tipofalta": (data.get("tipofalta") or "").strip() or None,
+            "nivelcateg": (data.get("nivelcateg") or "").strip() or None,
+            "resolucionurl": (data.get("resolucionurl") or "").strip() or None,
+            "observaciones": (data.get("observaciones") or "").strip() or None,
+            "cve_moneda1": (data.get("cve_moneda1") or "").strip() or None,
+            "cve_moneda2": (data.get("cve_moneda2") or "").strip() or None,
+            "tipo_docto": (data.get("tipo_docto") or "").strip() or None,
+            "titulo_docto": (data.get("titulo_docto") or "").strip() or None,
+            "descripcion_docto": (data.get("descripcion_docto") or "").strip() or None,
+            "fecha_docto": parse_date(data.get("fecha_docto")),
+            "particular": (data.get("particular") or "").strip() or None,
+            "montoapi1": parse_number(data.get("montoapi1")),
+            "montoapi2": parse_number(data.get("montoapi2")),
+            "gravedad": (data.get("gravedad") or "").strip() or None,
+        }
+
+        if "fechareg" in data:
+            update_data["fechareg"] = parse_date(data.get("fechareg"))
+
+        registro_qs.update(**update_data)
 
         return JsonResponse({
             "ok": True,
@@ -787,12 +868,13 @@ def eliminar_estatal(request):
         if not anio or not sancionid:
             return JsonResponse({"error": "AÑO y SANCIONID son obligatorios."}, status=400)
 
-        try:
-            obj = Inhabilitado.objects.get(anio=anio, sancionid=sancionid)
-        except Inhabilitado.DoesNotExist:
-            return JsonResponse({"error": "Registro estatal no encontrado."}, status=404)
+        eliminados, _ = Inhabilitado.objects.filter(
+            anio=anio,
+            sancionid=sancionid
+        ).delete()
 
-        obj.delete()
+        if eliminados == 0:
+            return JsonResponse({"error": "Registro estatal no encontrado."}, status=404)
 
         return JsonResponse({
             "ok": True,
@@ -817,7 +899,6 @@ def cargar_excel_federal(request):
         insertados = 0
         duplicados = 0
         omitidos = 0
-
         for _, row in df.iterrows():
             def txt(col):
                 val = row.get(col, None)
@@ -834,8 +915,7 @@ def cargar_excel_federal(request):
                 except Exception:
                     return None
 
-            rfc = normalize_rfc(txt("RFC"))
-            homoclave = normalize_homoclave(txt("HOMO"))
+            rfc, homoclave = normalize_federal_rfc_parts(txt("RFC"), txt("HOMO"))
 
             if not rfc:
                 omitidos += 1
@@ -869,6 +949,133 @@ def cargar_excel_federal(request):
                 deinhabil=fecha("FECHA INICIO"),
                 ainhabil=fecha("FECHA FIN"),
                 fechainf=None,
+            )
+
+            insertados += 1
+
+        return JsonResponse({
+            "ok": True,
+            "insertados": insertados,
+            "duplicados": duplicados,
+            "omitidos": omitidos
+        })
+
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
+
+@csrf_exempt
+@require_POST
+def cargar_excel_estatal(request):
+    if "file" not in request.FILES:
+        return JsonResponse({"error": "No se envió archivo."}, status=400)
+
+    file = request.FILES["file"]
+
+    try:
+        # La plantilla estatal tiene encabezados en la fila 4
+        df = pd.read_excel(file, header=3, dtype=str, keep_default_na=False)
+        df.columns = [str(c).strip() for c in df.columns]
+
+        insertados = 0
+        duplicados = 0
+        omitidos = 0
+        dependencias_por_clave = {
+            item["clave"]: item["descripcion"]
+            for item in Dependencia.objects.values("clave", "descripcion")
+        }
+
+        def txt(row, col):
+            val = row.get(col, None)
+            if pd.isna(val):
+                return None
+            value = str(val).strip()
+            return value if value != "" else None
+
+        def fecha(row, col):
+            val = row.get(col, None)
+            if pd.isna(val) or val in ("", None):
+                return None
+            try:
+                if isinstance(val, datetime):
+                    return val.date()
+                return pd.to_datetime(val).date()
+            except Exception:
+                return None
+
+        for _, row in df.iterrows():
+            anio = txt(row, "AÑO")
+            sancionid = txt(row, "SANCIONID")
+            dependencia = normalize_dependencia_clave(txt(row, "DEPENDENCIA"))
+            cve_entidad_labora = normalize_dependencia_clave(txt(row, "CVE_ENTIDAD_LABORA"))
+            entidad_labora = dependencias_por_clave.get(cve_entidad_labora) or txt(row, "ENTIDAD_LABORA")
+            rfc = normalize_rfc(txt(row, "RFC"))
+            curp = normalize_curp(txt(row, "CURP"))
+
+            # Clave mínima obligatoria
+            if not anio or not sancionid:
+                omitidos += 1
+                continue
+
+            # Validaciones opcionales
+            if rfc and not validar_rfc_estatal(rfc):
+                omitidos += 1
+                continue
+
+            if curp and not validar_curp(curp):
+                omitidos += 1
+                continue
+
+            existe = Inhabilitado.objects.filter(anio=anio, sancionid=sancionid).exists()
+            if existe:
+                duplicados += 1
+                continue
+
+            Inhabilitado.objects.create(
+                anio=anio,
+                sancionid=sancionid,
+                oficio=txt(row, "OFICIO"),
+                f_oficio=fecha(row, "F_OFICIO"),
+                expediente=txt(row, "EXPEDIENTE"),
+                f_resolucion=fecha(row, "F_RESOLUCION"),
+                apaterno=txt(row, "APATERNO"),
+                amaterno=txt(row, "AMATERNO"),
+                nombres=txt(row, "NOMBRES"),
+                dependencia=dependencia,
+                cargo=txt(row, "CARGO"),
+                entidad_labora=entidad_labora,
+                tiposancion=txt(row, "TIPOSANCION"),
+                tiposancion2=txt(row, "TIPOSANCION2"),
+                periodo=txt(row, "PERIODO"),
+                deinhabil=fecha(row, "DEINHABIL"),
+                ainhabil=fecha(row, "AINHABIL"),
+                motivo=txt(row, "MOTIVO"),
+                statussanc1=txt(row, "STATUSSANC1"),
+                statussanc2=txt(row, "STATUSSANC2"),
+                rfc=rfc or None,
+                fejec1=fecha(row, "FEJEC1"),
+                fejec2=fecha(row, "FEJEC2"),
+                monto1=txt(row, "MONTO1"),
+                monto2=txt(row, "MONTO2"),
+                curp=curp or None,
+                fechareg=fecha(row, "FECHAREG"),
+                genero=txt(row, "GENERO"),
+                idsesea=parse_number(txt(row, "IDSESEA")),
+                cve_entidad_labora=cve_entidad_labora,
+                tipofalta=txt(row, "TIPOFALTA"),
+                nivelcateg=txt(row, "NIVELCATEG"),
+                resolucionurl=txt(row, "RESOLUCIONURL"),
+                observaciones=txt(row, "OBSERVACIONES"),
+                cve_moneda1=txt(row, "CVE_MONEDA1"),
+                cve_moneda2=txt(row, "CVE_MONEDA2"),
+                tipo_docto=txt(row, "TIPO_DOCTO"),
+                titulo_docto=txt(row, "TITULO_DOCTO"),
+                descripcion_docto=txt(row, "DESCRIPCION_DOCTO"),
+                fecha_docto=fecha(row, "FECHA_DOCTO"),
+                particular=txt(row, "PARTICULAR"),
+                montoapi1=parse_number(txt(row, "MONTOAPI1")),
+                montoapi2=parse_number(txt(row, "MONTOAPI2")),
+                gravedad=txt(row, "GRAVEDAD"),
             )
 
             insertados += 1

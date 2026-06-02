@@ -12,6 +12,7 @@ from .views import (
     editar_estatal,
     eliminar_estatal,
     cargar_excel_federal,
+    cargar_excel_estatal,
     catalogos_estatal,
 )
 
@@ -24,6 +25,7 @@ urlpatterns = [
     path("estatal/detalle", detalle_estatal),
     path("estatal/editar", editar_estatal),
     path("estatal/eliminar", eliminar_estatal),
+    path("estatal/cargar-excel", cargar_excel_estatal),
 
     path("federal/crear", crear_federal),
     path("federal/detalle", detalle_federal),
