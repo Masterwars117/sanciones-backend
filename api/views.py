@@ -6,6 +6,7 @@ import pandas as pd
 from django.db.models import CharField, Q, Value
 from django.db.models.functions import Coalesce, Concat
 from django.http import JsonResponse
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
@@ -477,7 +478,7 @@ def crear_estatal(request):
             monto1=(data.get("monto1") or "").strip() or None,
             monto2=(data.get("monto2") or "").strip() or None,
             curp=curp or None,
-            fechareg=parse_date(data.get("fechareg")),
+            fechareg=timezone.now(),
             genero=(data.get("genero") or "").strip() or None,
             idsesea=parse_number(data.get("idsesea")),
             cve_entidad_labora=cve_entidad_labora,
