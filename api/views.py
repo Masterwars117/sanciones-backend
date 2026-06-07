@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, time as dt_time, timedelta, timezone as dt_timezone
 import json
 import re
 
@@ -34,6 +34,8 @@ NIVELES_GRAVEDAD_ESTATAL = [
     {"clave": "G", "descripcion": "Grave"},
     {"clave": "N", "descripcion": "No aplica"},
 ]
+
+EXCEL_REGISTRO_TIMEZONE = timezone.get_fixed_timezone(-360)
 
 
 def parse_date(value):
@@ -1004,6 +1006,81 @@ def cargar_excel_estatal(request):
             except Exception:
                 return None
 
+        def hora_valor(value):
+            if value is None or pd.isna(value):
+                return None
+
+            if isinstance(value, datetime):
+                return value.time().replace(microsecond=0)
+
+            value = str(value).strip()
+            if not value:
+                return None
+
+            value = re.sub(r"\s*(hrs?|horas?)\.?\s*$", "", value, flags=re.IGNORECASE).strip()
+
+            if re.fullmatch(r"\d+(\.\d+)?", value):
+                numeric_value = float(value)
+                if 0 <= numeric_value < 1:
+                    seconds = min(int(round(numeric_value * 86400)), 86399)
+                    return (datetime.min + timedelta(seconds=seconds)).time()
+
+            match = re.fullmatch(r"(\d{1,2}):(\d{2})(?::(\d{2}))?", value)
+            if match:
+                hour = int(match.group(1))
+                minute = int(match.group(2))
+                second = int(match.group(3) or 0)
+                if 0 <= hour <= 23 and 0 <= minute <= 59 and 0 <= second <= 59:
+                    return dt_time(hour, minute, second)
+                return None
+
+            try:
+                parsed = pd.to_datetime(value)
+                if pd.isna(parsed):
+                    return None
+                return parsed.time().replace(microsecond=0)
+            except Exception:
+                return None
+
+        def hora(row, *cols):
+            for col in cols:
+                val = row.get(col, None)
+                parsed = hora_valor(val)
+                if parsed is not None:
+                    return parsed
+            return None
+
+        def fecha_hora_registro(row):
+            raw_fecha = row.get("FECHAREG", None)
+            if pd.isna(raw_fecha) or raw_fecha in ("", None):
+                return None
+
+            try:
+                parsed_fecha = pd.to_datetime(raw_fecha)
+            except Exception:
+                return None
+
+            if pd.isna(parsed_fecha):
+                return None
+
+            parsed_hora = hora(
+                row,
+                "HORA_REGISTRO",
+                "HORA REGISTRO",
+                "HORA_REG",
+                "HORAREG",
+                "HORA",
+            )
+
+            fecha_tiene_hora = parsed_fecha.time().replace(microsecond=0) != dt_time.min
+
+            if parsed_hora is None and not fecha_tiene_hora:
+                return datetime.combine(parsed_fecha.date(), dt_time.min, tzinfo=dt_timezone.utc)
+
+            hora_final = parsed_hora or parsed_fecha.time().replace(microsecond=0)
+            fecha_hora = datetime.combine(parsed_fecha.date(), hora_final)
+            return timezone.make_aware(fecha_hora, EXCEL_REGISTRO_TIMEZONE)
+
         for _, row in df.iterrows():
             anio = txt(row, "AÑO")
             sancionid = txt(row, "SANCIONID")
@@ -1059,7 +1136,7 @@ def cargar_excel_estatal(request):
                 monto1=txt(row, "MONTO1"),
                 monto2=txt(row, "MONTO2"),
                 curp=curp or None,
-                fechareg=fecha(row, "FECHAREG"),
+                fechareg=fecha_hora_registro(row),
                 genero=txt(row, "GENERO"),
                 idsesea=parse_number(txt(row, "IDSESEA")),
                 cve_entidad_labora=cve_entidad_labora,
