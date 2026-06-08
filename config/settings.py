@@ -1,7 +1,7 @@
 """
 Django settings for config project.
 
-# Django 4.1 + backend config.db (Oracle 10g)
+# Django 4.1 + PostgreSQL.
 # Proyecto original: django-admin con Django 5.2; bajado por compatibilidad BD.
 
 For more information on this file, see
@@ -16,16 +16,6 @@ from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-
-
-def _oracle_dsn() -> str:
-    host = os.environ["ORACLE_HOST"]
-    port = os.environ.get("ORACLE_PORT", "1521")
-    service = os.environ["ORACLE_SERVICE_NAME"]
-    return (
-        f"(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST={host})(PORT={port}))"
-        f"(CONNECT_DATA=(SERVICE_NAME={service})))"
-    )
 
 
 # Quick-start development settings - unsuitable for production
@@ -94,10 +84,12 @@ WSGI_APPLICATION = 'config.wsgi.application'
 
 DATABASES = {
     "default": {
-        "ENGINE": "config.db",
-        "NAME": _oracle_dsn(),
-        "USER": os.environ["ORACLE_USER"],
-        "PASSWORD": os.environ["ORACLE_PASSWORD"],
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": os.environ["POSTGRES_DB"],
+        "USER": os.environ["POSTGRES_USER"],
+        "PASSWORD": os.environ["POSTGRES_PASSWORD"],
+        "HOST": os.environ.get("POSTGRES_HOST", "localhost"),
+        "PORT": os.environ.get("POSTGRES_PORT", "5432"),
     }
 }
 

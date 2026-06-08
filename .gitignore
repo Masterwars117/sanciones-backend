@@ -1,0 +1,5 @@
+__pycache__/
+*.py[cod]
+
+# Datos exportados desde Oracle para carga local.
+docker/dev/postgres/import/csv/*.csv

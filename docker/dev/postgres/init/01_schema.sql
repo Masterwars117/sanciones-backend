@@ -1,0 +1,118 @@
+CREATE TABLE IF NOT EXISTS "INHABILIFEDERAL" (
+    "DEPENDENCIA" varchar(500),
+    "RFC" varchar(10) NOT NULL,
+    "HOMOCLAVE" varchar(3),
+    "APATERNO" varchar(300),
+    "AMATERNO" varchar(300),
+    "NOMBRES" varchar(300),
+    "AUTSANC" varchar(500),
+    "CARGO" varchar(500),
+    "PERIODO" varchar(300),
+    "FECHARES" date,
+    "FECHANOT" date,
+    "DEINHABIL" date,
+    "AINHABIL" date,
+    "FECHAINF" date,
+    CONSTRAINT "INHABILIFEDERAL_PK" PRIMARY KEY ("RFC")
+);
+
+CREATE TABLE IF NOT EXISTS "INHABILITADOS" (
+    "AÑO" varchar(4) NOT NULL,
+    "SANCIONID" varchar(6) NOT NULL,
+    "OFICIO" varchar(40),
+    "F_OFICIO" date,
+    "EXPEDIENTE" varchar(30),
+    "F_RESOLUCION" date,
+    "APATERNO" varchar(20),
+    "AMATERNO" varchar(20),
+    "NOMBRES" varchar(50),
+    "DEPENDENCIA" varchar(3),
+    "CARGO" varchar(100),
+    "ENTIDAD_LABORA" varchar(80),
+    "TIPOSANCION" varchar(2),
+    "TIPOSANCION2" varchar(2),
+    "PERIODO" varchar(20),
+    "DEINHABIL" date,
+    "AINHABIL" date,
+    "MOTIVO" varchar(300),
+    "STATUSSANC1" varchar(1),
+    "STATUSSANC2" varchar(1),
+    "RFC" varchar(13),
+    "FEJEC1" date,
+    "FEJEC2" date,
+    "MONTO1" varchar(30),
+    "MONTO2" varchar(30),
+    "CURP" varchar(18),
+    "FECHAREG" timestamp with time zone,
+    "GENERO" varchar(1),
+    "IDSESEA" numeric(38, 0),
+    "CVE_ENTIDAD_LABORA" varchar(6),
+    "TIPOFALTA" varchar(4),
+    "NIVELCATEG" varchar(10),
+    "RESOLUCIONURL" varchar(300),
+    "OBSERVACIONES" varchar(500),
+    "CVE_MONEDA1" varchar(6),
+    "CVE_MONEDA2" varchar(6),
+    "TIPO_DOCTO" varchar(25),
+    "TITULO_DOCTO" varchar(50),
+    "DESCRIPCION_DOCTO" varchar(50),
+    "FECHA_DOCTO" date,
+    "PARTICULAR" varchar(1),
+    "MONTOAPI1" numeric(38, 0),
+    "MONTOAPI2" numeric(38, 0),
+    "GRAVEDAD" varchar(1),
+    CONSTRAINT "INHABILITADOS_PK" PRIMARY KEY ("AÑO", "SANCIONID")
+);
+
+CREATE TABLE IF NOT EXISTS "CAT_GENERO" (
+    "GEN_CVE" varchar(1) NOT NULL,
+    "GEN_DESCRIPCION" varchar(20) NOT NULL,
+    CONSTRAINT "CAT_GENERO_PK" PRIMARY KEY ("GEN_CVE")
+);
+
+CREATE TABLE IF NOT EXISTS "TIPOSANCION" (
+    "CLAVE" varchar(2) NOT NULL,
+    "DESCRIPCION" varchar(100) NOT NULL,
+    CONSTRAINT "TIPOSANCION_PK" PRIMARY KEY ("CLAVE")
+);
+
+CREATE TABLE IF NOT EXISTS "CAT_MONEDAS" (
+    "MON_CVE" varchar(6) NOT NULL,
+    "MON_DESCRIPCION" varchar(150) NOT NULL,
+    CONSTRAINT "CAT_MONEDAS_PK" PRIMARY KEY ("MON_CVE")
+);
+
+CREATE TABLE IF NOT EXISTS "CAT_TFALTA" (
+    "FAL_CLAVE" varchar(4) NOT NULL,
+    "FAL_DESCRIPCION" varchar(150) NOT NULL,
+    CONSTRAINT "CAT_TFALTA_PK" PRIMARY KEY ("FAL_CLAVE")
+);
+
+CREATE TABLE IF NOT EXISTS "CAT_TIPODOCTO" (
+    "DESCRIPDOCTO" varchar(50) NOT NULL,
+    CONSTRAINT "CAT_TIPODOCTO_PK" PRIMARY KEY ("DESCRIPDOCTO")
+);
+
+CREATE TABLE IF NOT EXISTS "DEPENDENCIAS" (
+    "CLAVE" varchar(3) NOT NULL,
+    "DESCRIPCION" varchar(110) NOT NULL,
+    "TIPO" integer NOT NULL,
+    "DEP_SIGLAS" varchar(50),
+    "DEP_HABILITADO" varchar(1),
+    "DEP_IDANTERIOR" varchar(6),
+    "DEP_CVEFINANZAS" varchar(6),
+    "MOSTRARSESEA" varchar(2),
+    CONSTRAINT "DEPENDENCIAS_PK" PRIMARY KEY ("CLAVE")
+);
+
+CREATE INDEX IF NOT EXISTS "INHABILIFEDERAL_FECHARES_IDX"
+    ON "INHABILIFEDERAL" ("FECHARES");
+
+CREATE INDEX IF NOT EXISTS "INHABILITADOS_FECHAREG_IDX"
+    ON "INHABILITADOS" ("FECHAREG");
+
+CREATE INDEX IF NOT EXISTS "INHABILITADOS_EXPEDIENTE_IDX"
+    ON "INHABILITADOS" ("EXPEDIENTE");
+
+CREATE INDEX IF NOT EXISTS "DEPENDENCIAS_TIPO_DESCRIPCION_IDX"
+    ON "DEPENDENCIAS" ("TIPO", "DESCRIPCION");

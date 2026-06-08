@@ -1,18 +1,41 @@
-name: ${DOCKER_DEV_NAME}
+name: ${DOCKER_DEV_NAME:-sanciones-backend-dev}
 
 services:
+  postgres:
+    image: postgres:16-alpine
+    env_file:
+      - ../../.env
+    ports:
+      - "${DOCKER_DEV_POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
   django:
     build:
       context: ../../
       dockerfile: docker/dev/Dockerfile
     env_file:
       - ../../.env
+    depends_on:
+      postgres:
+        condition: service_healthy
     ports:
-      - "${DOCKER_DEV_DJANGO_PORT}:8000"
+      - "${DOCKER_DEV_DJANGO_PORT:-8000}:8000"
     volumes:
       - ../../:/app
     restart: unless-stopped
     command: >
       sh -c "
+        python manage.py migrate --noinput &&
         python manage.py runserver 0.0.0.0:8000
       "
+
+volumes:
+  postgres_data:
