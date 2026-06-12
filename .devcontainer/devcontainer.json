@@ -7,7 +7,8 @@
   "remoteUser": "root",
   "overrideCommand": false,
   "forwardPorts": [8000],
-//   "postCreateCommand": "python manage.py migrate",
+  "postCreateCommand": "python manage.py migrate",
+
   "postStartCommand": "python manage.py runserver 0.0.0.0:8000",
 	"customizations": {
 		"vscode": {
