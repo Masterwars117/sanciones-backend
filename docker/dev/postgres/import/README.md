@@ -63,7 +63,18 @@ docker/dev/postgres/import/csv/
 Desde la raiz del proyecto:
 
 ```bash
-docker compose --env-file .env -f docker/dev/docker-compose.yml up -d --build
+docker compose --env-file .env -f docker/dev/docker-compose.yml down &&
+docker compose --env-file .env -f docker/dev/docker-compose.yml up --build -d &&
+docker compose --env-file .env -f docker/dev/docker-compose.yml logs -f
+```
+
+Si corres este backend junto a `gestiondocumental`, usa los puertos alternativos de
+`docker/dev/.env` (Django `9000`, PostgreSQL `5433`) para evitar conflictos:
+
+```bash
+docker compose --env-file .env --env-file docker/dev/.env -f docker/dev/docker-compose.yml down &&
+docker compose --env-file .env --env-file docker/dev/.env -f docker/dev/docker-compose.yml up --build -d &&
+docker compose --env-file .env --env-file docker/dev/.env -f docker/dev/docker-compose.yml logs -f
 ```
 
 ## 4. Importar datos
@@ -114,7 +125,7 @@ El script imprime el conteo antes y despues por tabla:
 Tambien puedes validar directo en PostgreSQL:
 
 ```bash
-docker compose --env-file .env -f docker/dev/docker-compose.yml exec postgres \
+docker compose --env-file .env -f docker/dev/docker-compose.yml exec postgres_db \
   psql -U sanciones -d sanciones -c 'SELECT COUNT(*) FROM "INHABILITADOS";'
 ```
 

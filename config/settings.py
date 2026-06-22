@@ -88,7 +88,7 @@ DATABASES = {
         "NAME": os.environ["POSTGRES_DB"],
         "USER": os.environ["POSTGRES_USER"],
         "PASSWORD": os.environ["POSTGRES_PASSWORD"],
-        "HOST": os.environ.get("POSTGRES_HOST", "localhost"),
+        "HOST": os.environ.get("POSTGRES_HOST", "postgres_db"),
         "PORT": os.environ.get("POSTGRES_PORT", "5432"),
     }
 }
@@ -135,4 +135,6 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-CORS_ALLOW_ALL_ORIGINS = True
+if os.environ.get("DJANGO_CORSHEADERS_ALLOW_ALL", "False").lower() in ("1", "true", "yes"):
+    CORS_ALLOW_ALL_ORIGINS = True
+    CORS_ALLOW_CREDENTIALS = True
